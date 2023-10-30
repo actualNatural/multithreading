@@ -1,0 +1,131 @@
+import threading
+import random
+import time
+
+# Constants
+NUM_PHILOSOPHERS = 5
+EATING_TIME_MIN = 10
+EATING_TIME_MAX = 40
+WAIT_TIME_MIN = 50
+WAIT_TIME_MAX = 100
+SIMULATION_TIME = 60
+
+# Locks and semaphores
+forks = [threading.Lock() for _ in range(NUM_PHILOSOPHERS)]
+eat_sem = threading.Semaphore(NUM_PHILOSOPHERS - 1)
+
+# Variables for tracking state and time spent
+states = ['thinking'] * NUM_PHILOSOPHERS
+state_lock = threading.Lock()
+time_in_states = {
+    'hungry': [0] * NUM_PHILOSOPHERS,
+    'eating': [0] * NUM_PHILOSOPHERS,
+    'thinking': [0] * NUM_PHILOSOPHERS,
+}
+total_time_spent_eating=[0,0,0,0,0]
+total_time_spent_thinking=[0,0,0,0,0]
+total_time_spent_hungry=[0,0,0,0,0]
+avg_time_eating=0
+avg_time_thinking=0
+avg_time_hungry=0
+
+# Helper function for logging events
+def log_event(philo_id, event):
+    with open('outputA.txt', 'a') as f:
+        f.write(f"Philosopher: {philo_id}, Time: {int(time.time() * 1000)} ms, {event}\n")
+
+# Function for philosopher thread
+def philosopher(id):
+    while time.time() < end_time:
+        # Thinking
+        log_event(id, 'entering thinking state')
+        with state_lock:
+            states[id] = 'thinking'
+            time_in_states['thinking'][id] += 10
+
+        time.sleep(0.01)
+
+        # Hungry
+        log_event(id, 'entering hungry state')
+        with state_lock:
+            states[id] = 'hungry'
+
+        # Try to pick up left fork
+        forks[id].acquire()
+        log_event(id, f'picked up fork {id}')
+
+        # Try to pick up right fork
+        if not forks[(id + 1) % NUM_PHILOSOPHERS].acquire(blocking=False):
+            # Right fork unavailable, release left fork and try again later
+            forks[id].release()
+            log_event(id, f'tried to pick up fork {(id + 1) % NUM_PHILOSOPHERS}, its unavailable')
+            time.sleep(random.randint(WAIT_TIME_MIN, WAIT_TIME_MAX) / 1000)
+            continue
+
+        # Both forks acquired, start eating
+        eat_sem.acquire()
+        log_event(id, f'picked up fork {(id + 1) % NUM_PHILOSOPHERS}')
+        with state_lock:
+            states[id] = 'eating'
+
+        eating_time = random.randint(EATING_TIME_MIN, EATING_TIME_MAX)
+        log_event(id, f'entering eating state. Will eat for {eating_time} ms')
+        time_in_states['hungry'][id] += eat_sem._value
+        time_in_states['eating'][id] += eating_time
+        time.sleep(eating_time / 1000)
+
+        # Done eating, release forks and semaphore
+        eat_sem.release()
+        forks[id].release()
+        forks[(id + 1) % NUM_PHILOSOPHERS].release()
+
+        with state_lock:
+            states[id] = 'thinking'
+            time_in_states['thinking'][id] += 10
+
+# Main program
+threads = []
+end_time = time.time() + SIMULATION_TIME    
+
+
+
+# Start philosopher threads
+for i in range(NUM_PHILOSOPHERS):
+    t = threading.Thread(target=philosopher, args=(i,))
+    threads.append(t)
+    t.start()
+
+# Wait for simulation to end
+for t in threads:
+    t.join()
+
+for i in range(NUM_PHILOSOPHERS):
+	print("\nPhilosopher "+str(i)+" time spent in thinking state = " + str(time_in_states['thinking'][i]))
+	print("\nPhilosopher "+str(i)+" time spent in eating state = " + str(time_in_states['eating'][i]))
+	print("\nPhilosopher "+str(i)+" time spent in hungry state = " + str(time_in_states['hungry'][i]))
+	total_time_spent_eating[i] += time_in_states['eating'][i]
+	total_time_spent_thinking[i] += time_in_states['thinking'][i]
+	total_time_spent_hungry[i] += time_in_states['hungry'][i]
+	avg_time_eating += time_in_states['eating'][i]
+	avg_time_thinking += time_in_states['thinking'][i]
+	avg_time_hungry += time_in_states['hungry'][i]
+        
+
+avg_time_eating=avg_time_eating/NUM_PHILOSOPHERS
+avg_time_thinking=avg_time_thinking/NUM_PHILOSOPHERS
+avg_time_hungry=avg_time_hungry/NUM_PHILOSOPHERS  
+
+print("\nAverage time of all philosophers thinking:"+str(avg_time_thinking))
+print("\nAverage time of all philosophers eating:"+str(avg_time_eating))
+print("\nAverage time of all philosophers hungry:"+str(avg_time_hungry))
+
+
+with open('outputA.txt', 'a') as f:
+        f.write(f"Average time of all philosophers spent eating: {avg_time_eating}\n")
+        f.write(f"Average time of all philosophers spent thinking: {avg_time_thinking}\n")
+        f.write(f"Average time of all philosophers spent hungry: {avg_time_hungry}\n")
+        for i in range(NUM_PHILOSOPHERS):
+           f.write(f"\nTotal time philosopher "+str(i)+" spent eating: "+str(total_time_spent_eating[i]))
+           f.write(f"\nTotal time philosopher "+str(i)+" spent thinking: "+str(total_time_spent_thinking[i]))
+           f.write(f"\nTotal time philospher"+str(i)+" spent hungry: "+str(total_time_spent_hungry[i]))
+
